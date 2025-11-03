@@ -17,12 +17,14 @@ Manual runs
 - `./nexus ingest-youtube --since 24 [--console]` — ingest from all subscriptions (or configured feeds)
 - `./nexus ingest-youtube-url <URL> [--console]` — ingest a single video by URL
 - `./nexus ingest-news --since 24 [--console]` — ingest news articles from RSS feeds
+- `./nexus ingest-hackernews --min-score 100 --since 24 [--console]` — ingest high-scoring HN stories
 - `./nexus ingest-apple-notes [--console]` — ingest from configured Notes folder
 - `./nexus ingest-apple-reminders [--console]` — ingest from configured Reminders list
 
 Note: Each content type has its own database and upsert method:
 - Videos → YouTube database (upsert_video, no Body field)
 - Articles → Articles database (upsert_article, includes Body field)
+- HN Stories → Articles database (upsert_article, with HN discussion link and score in summary)
 - Notes → Notes database (upsert_note, no summarization)
 - Reminders → Reminders database (upsert_reminder, no summarization)
 

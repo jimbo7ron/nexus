@@ -18,3 +18,10 @@ rss_feeds:
   - https://ai.googleblog.com/feeds/posts/default
   - https://news.ycombinator.com/rss
 
+# Hacker News top stories
+# Ingests high-scoring HN stories using the official HN API
+# Run with: ./nexus ingest-hackernews --min-score 100 --since 24
+hackernews:
+  enabled: true
+  min_score: 100  # Minimum HN score threshold
+  since_hours: 24  # How many hours to look back

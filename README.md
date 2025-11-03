@@ -1,6 +1,6 @@
 # Nexus — Notion-first Ingestion
 
-This project ingests external content into Notion. YouTube videos and news articles are summarized; Apple Notes and Apple Reminders are stored without summaries. Notion is the single source of truth and UI.
+This project ingests external content into Notion. YouTube videos, news articles, and Hacker News stories are summarized with LLM; Apple Notes and Apple Reminders are stored without summaries. Notion is the single source of truth and UI.
 
 ## Important Note on Notion Python Client
 
@@ -138,6 +138,10 @@ Note: If `youtube_use_api: true` in config/feeds.yaml, this will use the YouTube
 - News (RSS → extract with trafilatura → summarize → upsert):
 ```bash
 ./nexus ingest-news --since 24 [--console]
+```
+- Hacker News (top stories → extract article → summarize → upsert):
+```bash
+./nexus ingest-hackernews --min-score 100 --since 24 [--console]
 ```
 - Apple Notes (no summary; upsert by synthetic URL `notes://<id>`):
 ```bash

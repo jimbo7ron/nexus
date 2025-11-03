@@ -35,5 +35,6 @@ logs/
 *.swo
 *~
 
-# Test files
+# Test files (but allow tests/ directory)
 test_*.py
+!tests/test_*.py

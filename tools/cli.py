@@ -24,6 +24,7 @@ from .notion import (
 )
 from .ingest_youtube import ingest_youtube_since
 from .ingest_news import ingest_news_since
+from .ingest_hackernews import ingest_hackernews
 from .ingest_apple_notes import ingest_apple_notes
 from .ingest_apple_reminders import ingest_apple_reminders
 from .ingest_youtube import ingest_youtube_url
@@ -166,6 +167,23 @@ def cmd_ingest_news(
     client = writer.client
     count = ingest_news_since(client, writer, since_hours=since, console=console)
     print(f"[green]OK[/green] Ingested {count} articles")
+
+
+@app.command("ingest-hackernews")
+def cmd_ingest_hackernews(
+    min_score: int = typer.Option(100, "--min-score", help="Minimum HN score threshold"),
+    since: int = typer.Option(24, "--since", help="Hours to look back"),
+    console: bool = typer.Option(False, "--console", help="Print items to console as they are processed"),
+):
+    """Ingest high-scoring Hacker News stories (default: 100+ points, last 24h)."""
+    token = get_notion_token()
+    if not token:
+        print("[red]ERROR[/red]: NOTION_TOKEN environment variable is not set.")
+        raise typer.Exit(code=1)
+    writer = _make_writer(token)
+    client = writer.client
+    count = ingest_hackernews(client, writer, min_score=min_score, since_hours=since, console=console)
+    print(f"[green]OK[/green] Ingested {count} HN stories")
 
 
 @app.command("ingest-apple-notes")

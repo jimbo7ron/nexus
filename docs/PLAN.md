@@ -81,6 +81,11 @@ Four separate databases with distinct purposes:
   - Fetch: `trafilatura` extraction
   - Summarize: LLM TL;DR + takeaways (60s timeout)
   - Write: `upsert_article()` to Articles database (includes Body field)
+- Hacker News (summarized)
+  - Discover: HackerNews Firebase API for top stories (score >= 100, last 24h)
+  - Fetch: `trafilatura` extraction of linked article
+  - Summarize: LLM TL;DR + takeaways with HN discussion link
+  - Write: `upsert_article()` to Articles database with source "Hacker News (XXX points)"
 - Apple Notes (no summary)
   - Discover+Fetch: AppleScript read from folder in `config.apple.yaml`
   - Write: `upsert_note()` to Notes database; no summarization
@@ -94,6 +99,7 @@ Four separate databases with distinct purposes:
 - `nexus ingest-youtube [--since 24] [--console]` — ingest YouTube videos from RSS feeds
 - `nexus ingest-youtube-url URL [--console] [--dry-run]` — ingest a single YouTube video by URL
 - `nexus ingest-news [--since 24] [--console]` — ingest news articles from RSS feeds
+- `nexus ingest-hackernews [--min-score 100] [--since 24] [--console]` — ingest high-scoring HN stories
 - `nexus ingest-apple-notes [--console]` — ingest Apple Notes from configured folder
 - `nexus ingest-apple-reminders [--console]` — ingest Apple Reminders from configured list
 - `nexus summarize [--limit 50] [--type video|article]` — backfill summaries for items with Status=fetched
