@@ -26,7 +26,24 @@ def _process_video_items(
         try:
             transcript = fetch_transcript_text(item.url)
         except Exception as e:
-            writer.log_event(item.url, action="fetch", result="error", message=str(e))
+            error_msg = str(e)
+            exception_type = type(e).__name__
+            
+            # Stop processing if transcript API is blocked
+            is_blocked = (
+                exception_type == "IpBlocked" or
+                "429" in error_msg or 
+                "rate limit" in error_msg.lower() or
+                "blocking" in error_msg.lower()
+            )
+            
+            if is_blocked:
+                print(f"[YouTube] Transcript API blocked. Stopping ingestion. Error: {error_msg[:200]}")
+                writer.log_event(item.url, action="fetch", result="error", message=error_msg)
+                raise
+            
+            # Log other errors and continue
+            writer.log_event(item.url, action="fetch", result="error", message=error_msg)
             continue
         
         content_hash_val = content_hash(transcript)
@@ -137,10 +154,27 @@ def ingest_youtube_url(
     try:
         transcript = fetch_transcript_text(url)
     except Exception as e:
+        error_msg = str(e)
+        exception_type = type(e).__name__
+        
+        # Stop if transcript API is blocked (check both exception type and message)
+        is_blocked = (
+            exception_type == "IpBlocked" or
+            "429" in error_msg or 
+            "rate limit" in error_msg.lower() or
+            "blocking" in error_msg.lower()
+        )
+        
+        if is_blocked:
+            print(f"[YouTube] Transcript API blocked. Stopping. Error: {error_msg[:200]}")
+            if writer:
+                writer.log_event(url, action="fetch", result="error", message=error_msg)
+            raise
+        
+        # Log other errors but don't stop
         if writer:
-            writer.log_event(url, action="fetch", result="error", message=str(e))
-        else:
-            print(f"[YouTube] fetch error: {e}")
+            writer.log_event(url, action="fetch", result="error", message=error_msg)
+        print(f"[YouTube] fetch error: {e}")
         return 0
 
     content_hash_val = content_hash(transcript)
