@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# Notion config (contains sensitive IDs)
+config/notion.json
+config/youtube_token.pickle
+config/youtube_client_secret.json
+
+# Environment variables
+.env
+
+# Local database
+db/
+*.sqlite
+
+# Logs
+logs/
+*.log
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test files
+test_*.py

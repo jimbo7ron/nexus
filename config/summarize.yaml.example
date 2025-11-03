@@ -1,0 +1,13 @@
+provider: openai  # openai | anthropic | local
+model: gpt-4o-mini
+max_tokens: 1000
+temperature: 0.3
+chunk_size: 8000  # tokens per chunk for long content
+api_key_env: OPENAI_API_KEY  # environment variable name
+
+# Optional per-type overrides
+video:
+  max_tokens: 1200
+article:
+  max_tokens: 800
+

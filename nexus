@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PY="$ROOT_DIR/.venv/bin/python"
+
+# Load .env file if it exists
+if [[ -f "$ROOT_DIR/.env" ]]; then
+  set -a
+  source "$ROOT_DIR/.env"
+  set +a
+fi
+
+if [[ -x "$PY" ]]; then
+  exec "$PY" -W ignore::DeprecationWarning -W ignore::FutureWarning -m tools.cli "$@"
+else
+  exec python3 -W ignore::DeprecationWarning -W ignore::FutureWarning -m tools.cli "$@"
+fi
+

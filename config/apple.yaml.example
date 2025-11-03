@@ -1,0 +1,6 @@
+# Apple Notes folder to ingest from
+notes_folder: "Nexus"
+
+# Apple Reminders list to ingest from
+reminders_list: "Nexus"
+

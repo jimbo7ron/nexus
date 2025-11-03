@@ -1,0 +1,15 @@
+# YouTube Discovery Options
+
+# Option 1: YouTube Data API (RECOMMENDED - automatically fetches ALL your subscriptions)
+youtube_use_api: true  # Enabled - will use OAuth to fetch your subscriptions
+youtube_api_max_channels: 100  # Maximum number of subscribed channels to monitor
+
+# Option 2: Individual YouTube channels (fallback if API is disabled)
+# youtube_channels:
+#   - UC_x5XG1OV2P6uZZ5FSM9Ttw  # example channel ID
+
+# RSS feeds for news articles
+rss_feeds:
+  - https://ai.googleblog.com/feeds/posts/default
+  - https://news.ycombinator.com/rss
+
