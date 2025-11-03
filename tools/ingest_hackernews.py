@@ -73,6 +73,8 @@ def ingest_hackernews(
         
         # Summarize the article
         try:
+            if console:
+                print(f"     🤖 Generating LLM summary...")
             summary_obj = summarizer.summarize_article(story.title, "Hacker News", text)
             
             # Build summary with HN discussion link at the top
@@ -93,12 +95,14 @@ def ingest_hackernews(
             summary_text = "\n".join(summary_parts)
             
             writer.log_event(story.url, action="summarize", result="ok", message="LLM summary generated")
+            if console:
+                print(f"     ✅ Summary generated ({len(summary_text)} chars)")
         except Exception as e:
             # Fallback: store truncated text with HN link
             summary_text = f"Hacker News Discussion: {story.hn_url}\nScore: {story.score} points\n\n{text[:1500]}"
             writer.log_event(story.url, action="summarize", result="error", message=str(e))
             if console:
-                print(f"     ⚠️  Summarization failed, storing truncated text")
+                print(f"     ⚠️  Summarization failed: {e}")
         
         if console:
             preview = (text[:300] or "").replace("\n", " ")

@@ -145,15 +145,20 @@ Topics: tag1, tag2, tag3
         current_section = None
         for line in lines:
             line = line.strip()
-            if line.startswith("TL;DR:"):
-                tldr = line.replace("TL;DR:", "").strip()
+            # Remove markdown bold formatting (** prefix/suffix)
+            line_clean = line.replace("**", "")
+            
+            if "TL;DR:" in line_clean.upper() or "TLDR:" in line_clean.upper():
+                # Extract TL;DR text after the colon
+                if ":" in line_clean:
+                    tldr = line_clean.split(":", 1)[-1].strip()
                 current_section = None
-            elif line.lower().startswith("takeaways:"):
+            elif "TAKEAWAYS:" in line_clean.upper() or "KEY TAKEAWAYS:" in line_clean.upper():
                 current_section = "takeaways"
-            elif line.lower().startswith("quotes:") or line.lower().startswith("notable"):
+            elif "QUOTES:" in line_clean.upper() or "NOTABLE" in line_clean.upper():
                 current_section = "quotes"
-            elif line.lower().startswith("topics:"):
-                topics_str = line.split(":", 1)[-1].strip()
+            elif "TOPICS:" in line_clean.upper():
+                topics_str = line_clean.split(":", 1)[-1].strip()
                 topics = [t.strip() for t in topics_str.split(",") if t.strip()]
                 current_section = None
             elif line.startswith("-") or line.startswith("•") or line.startswith("*"):
