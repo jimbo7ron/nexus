@@ -261,9 +261,15 @@ class NotionWriter:
         return created["id"]
 
     def log_event(self, item_url: str, action: str, result: str, message: str = "", when_iso: Optional[str] = None) -> str:
+        from datetime import datetime, timezone
+        
+        # Auto-generate timestamp if not provided
+        if not when_iso:
+            when_iso = datetime.now(timezone.utc).isoformat()
+        
         props = {
             "Name": {"title": [{"type": "text", "text": {"content": f"{action} | {result}"[:100]}}]},
-            "Time": {"date": {"start": when_iso}} if when_iso else {"date": None},
+            "Time": {"date": {"start": when_iso}},
             "Item URL": {"url": item_url},
             "Action": {"select": {"name": action}},
             "Result": {"select": {"name": result}},

@@ -173,7 +173,8 @@ def cmd_ingest_news(
 def cmd_ingest_hackernews(
     min_score: int = typer.Option(100, "--min-score", help="Minimum HN score threshold"),
     since: int = typer.Option(24, "--since", help="Hours to look back"),
-    console: bool = typer.Option(False, "--console", help="Print items to console as they are processed"),
+    console: bool = typer.Option(False, "--console", help="Print one-line summary per story"),
+    verbose: bool = typer.Option(False, "--verbose", help="Print detailed output (URLs, content preview, etc)"),
 ):
     """Ingest high-scoring Hacker News stories (default: 100+ points, last 24h)."""
     token = get_notion_token()
@@ -182,7 +183,7 @@ def cmd_ingest_hackernews(
         raise typer.Exit(code=1)
     writer = _make_writer(token)
     client = writer.client
-    count = ingest_hackernews(client, writer, min_score=min_score, since_hours=since, console=console)
+    count = ingest_hackernews(client, writer, min_score=min_score, since_hours=since, console=console, verbose=verbose)
     print(f"[green]OK[/green] Ingested {count} HN stories")
 
 

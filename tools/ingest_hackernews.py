@@ -21,6 +21,7 @@ def ingest_hackernews(
     min_score: int = 100,
     since_hours: int = 24,
     console: bool = False,
+    verbose: bool = False,
 ) -> int:
     """
     Ingest HackerNews stories with high scores.
@@ -30,7 +31,8 @@ def ingest_hackernews(
         writer: NotionWriter instance
         min_score: Minimum HN score threshold
         since_hours: How many hours to look back
-        console: Whether to print console output
+        console: Whether to print console output (summary, one line per story)
+        verbose: Whether to print verbose output (includes content preview, summary details)
     
     Returns:
         Number of stories processed
@@ -50,7 +52,12 @@ def ingest_hackernews(
     total = 0
     
     for story in stories:
-        if console:
+        # Console: one-line summary
+        if console and not verbose:
+            print(f"[HN] {story.title[:60]}... ({story.score} pts)", end=" ", flush=True)
+        
+        # Verbose: detailed output
+        if verbose:
             print(f"\n[HN] Processing: {story.title} ({story.score} points)")
             print(f"     URL: {story.url}")
             print(f"     Discussion: {story.hn_url}")
@@ -59,7 +66,9 @@ def ingest_hackernews(
         text = fetch_article_text(story.url)
         if not text:
             writer.log_event(story.url, action="fetch", result="error", message="no content extracted")
-            if console:
+            if console and not verbose:
+                print("❌ No content")
+            elif verbose:
                 print(f"     ❌ Could not extract article text")
             continue
         
@@ -67,13 +76,15 @@ def ingest_hackernews(
         content_hash_val = content_hash(text)
         if not has_changed(story.url, content_hash_val):
             writer.log_event(story.url, action="fetch", result="skip", message="unchanged")
-            if console:
+            if console and not verbose:
+                print("⏭️  Skip (unchanged)")
+            elif verbose:
                 print(f"     ⏭️  Already processed (unchanged)")
             continue
         
         # Summarize the article
         try:
-            if console:
+            if verbose:
                 print(f"     🤖 Generating LLM summary...")
             summary_obj = summarizer.summarize_article(story.title, "Hacker News", text)
             
@@ -95,16 +106,18 @@ def ingest_hackernews(
             summary_text = "\n".join(summary_parts)
             
             writer.log_event(story.url, action="summarize", result="ok", message="LLM summary generated")
-            if console:
+            if verbose:
                 print(f"     ✅ Summary generated ({len(summary_text)} chars)")
         except Exception as e:
             # Fallback: store truncated text with HN link
             summary_text = f"Hacker News Discussion: {story.hn_url}\nScore: {story.score} points\n\n{text[:1500]}"
             writer.log_event(story.url, action="summarize", result="error", message=str(e))
-            if console:
+            if console and not verbose:
+                print(f"⚠️  Summary failed")
+            elif verbose:
                 print(f"     ⚠️  Summarization failed: {e}")
         
-        if console:
+        if verbose:
             preview = (text[:300] or "").replace("\n", " ")
             print(f"     Content preview: {preview}...")
         
@@ -126,11 +139,15 @@ def ingest_hackernews(
             mark_processed(story.url, content_hash_val)
             total += 1
             
-            if console:
+            if console and not verbose:
+                print("✅")
+            elif verbose:
                 print(f"     ✅ Successfully added to Notion")
         except Exception as e:
             writer.log_event(story.url, action="write", result="error", message=str(e))
-            if console:
+            if console and not verbose:
+                print(f"❌ Write error")
+            elif verbose:
                 print(f"     ❌ Error writing to Notion: {e}")
     
     return total
