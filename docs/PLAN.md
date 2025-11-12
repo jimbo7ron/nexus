@@ -1,8 +1,8 @@
-# Nexus — Notion-first Ingestion (Videos summarized; Apple items direct)
+# Nexus — Notion-first Ingestion
 
 ### Purpose
 
-Use Notion as the UI and database. Nexus runs simple plugins that ingest external content, generate summaries when appropriate, and write structured entries to Notion. YouTube videos and news articles are summarized; Apple Notes and Apple Reminders are stored without summaries.
+Use Notion as the UI and database. Nexus runs simple plugins that ingest external content, generate summaries, and write structured entries to Notion. YouTube videos, news articles, and Hacker News stories are summarized with LLM.
 
 ### Principles
 
@@ -19,7 +19,7 @@ Use Notion as the UI and database. Nexus runs simple plugins that ingest externa
 
 ### Notion schema (minimal)
 
-Four separate databases with distinct purposes:
+Three separate databases with distinct purposes:
 
 - YouTube (database) — video content only
   - Name (title)
@@ -39,21 +39,6 @@ Four separate databases with distinct purposes:
   - Published (date)
   - Last Updated (date)
 
-- Notes (database) — Apple Notes (no summarization)
-  - Title (title)
-  - Link (url) — synthetic: `notes://<id>`
-  - Body (rich text)
-  - Source (rich text) — folder name
-  - Last Updated (date)
-
-- Reminders (database) — Apple Reminders (no summarization)
-  - Title (title)
-  - Link (url) — synthetic: `reminders://<id>`
-  - Body (rich text)
-  - Source (rich text) — list name
-  - Due Date (date)
-  - Last Updated (date)
-
 - Ingestion Log (database) — operational logging
   - Name (title)
   - Time (date)
@@ -64,10 +49,9 @@ Four separate databases with distinct purposes:
 
 ### Configuration
 
-- `config/notion.json`: `{ youtube_db_id, articles_db_id, notes_db_id, reminders_db_id, log_db_id, parent_page_id }` (token in env/keychain)
+- `config/notion.json`: `{ youtube_db_id, articles_db_id, log_db_id, parent_page_id }` (token in env/keychain)
 - `config/feeds.yaml`: `youtube_use_api: true`, `youtube_channels: []`, `rss_feeds: []`
 - `config/summarize.yaml`: `{ model, max_tokens, style }`
-- `config/apple.yaml`: `{ notes_folder: "Nexus", reminders_list: "Nexus" }`
 
 ### Plugins (single-method)
 
@@ -86,12 +70,6 @@ Four separate databases with distinct purposes:
   - Fetch: `trafilatura` extraction of linked article
   - Summarize: LLM TL;DR + takeaways with HN discussion link
   - Write: `upsert_article()` to Articles database with source "Hacker News (XXX points)"
-- Apple Notes (no summary)
-  - Discover+Fetch: AppleScript read from folder in `config.apple.yaml`
-  - Write: `upsert_note()` to Notes database; no summarization
-- Apple Reminders (no summary)
-  - Discover+Fetch: AppleScript read from list in `config.apple.yaml`
-  - Write: `upsert_reminder()` to Reminders database; no summarization
 
 ### CLI (LLM/Human contract)
 
@@ -99,10 +77,7 @@ Four separate databases with distinct purposes:
 - `nexus ingest-youtube [--since 24] [--console]` — ingest YouTube videos from RSS feeds
 - `nexus ingest-youtube-url URL [--console] [--dry-run]` — ingest a single YouTube video by URL
 - `nexus ingest-news [--since 24] [--console]` — ingest news articles from RSS feeds
-- `nexus ingest-hackernews [--min-score 100] [--since 24] [--console]` — ingest high-scoring HN stories
-- `nexus ingest-apple-notes [--console]` — ingest Apple Notes from configured folder
-- `nexus ingest-apple-reminders [--console]` — ingest Apple Reminders from configured list
-- `nexus summarize [--limit 50] [--type video|article]` — backfill summaries for items with Status=fetched
+- `nexus ingest-hackernews [--min-score 100] [--since 24] [--console] [--workers 10]` — ingest high-scoring HN stories with parallel processing
 
 All commands idempotent; on error, write to Ingestion Log and continue. Use `--console` to print output to screen for debugging.
 
@@ -110,7 +85,7 @@ All commands idempotent; on error, write to Ingestion Log and continue. Use `--c
 
 1) Discover → enqueue if unseen
 2) Fetch → compute Content Hash
-3) Summarize (YouTube/News only)
+3) Summarize (YouTube/News/HN all use LLM)
 4) Upsert to Notion Content (and child blocks for body)
 5) Log each step to Ingestion Log
 
@@ -118,10 +93,10 @@ All commands idempotent; on error, write to Ingestion Log and continue. Use `--c
 
 - `plugins/youtube/{collector.py, transcript.py}`
 - `plugins/news/{collector.py, extractor.py}`
-- `plugins/apple/{notes.py, reminders.py}`
-- `tools/{cli.py, notion.py, storage.py, dedupe.py, summarizer.py, config.py}`
+- `plugins/hackernews/collector.py`
+- `tools/{cli.py, notion.py, storage.py, rate_limiter.py, summarizer.py, config.py, text_utils.py}`
 - `db/queue.sqlite` (gitignored)
-- `docs/{PLAN.md, notion-setup.md, ops.md}`
+- `docs/{PLAN.md, ops.md}`
 
 ### Implementation details
 
@@ -146,8 +121,8 @@ All commands idempotent; on error, write to Ingestion Log and continue. Use `--c
 
 ### Human usage
 
-- Adjust feeds, Apple folder/list in `config/*`
-- Use Notion views (Latest, Needs Summary, Errors)
+- Adjust feeds in `config/*`
+- Use Notion views (Latest, Errors)
 - Edit metadata in Notion; re-runs upsert without duplicates
 
 ### LLM usage
@@ -158,8 +133,8 @@ All commands idempotent; on error, write to Ingestion Log and continue. Use `--c
 
 ### Limitations
 
-- macOS-only Apple integrations (AppleScript)
 - No alternate fetch fallbacks by principle
 - Notion block limits: long bodies stored as paginated blocks
+- Async processing with rate limiting for Notion API (3 req/sec)
 
 

@@ -13,7 +13,6 @@ CONFIG_DIR = Path(__file__).parent.parent / "config"
 NOTION_CONFIG_PATH = CONFIG_DIR / "notion.json"
 FEEDS_CONFIG_PATH = CONFIG_DIR / "feeds.yaml"
 SUMMARIZE_CONFIG_PATH = CONFIG_DIR / "summarize.yaml"
-APPLE_CONFIG_PATH = CONFIG_DIR / "apple.yaml"
 
 
 class NotionConfig(BaseModel):
@@ -23,8 +22,6 @@ class NotionConfig(BaseModel):
     )
     youtube_db_id: str = Field(default="", description="Notion YouTube database ID (video content)")
     articles_db_id: str = Field(default="", description="Notion Articles database ID (news articles and blog posts)")
-    notes_db_id: str = Field(default="", description="Notion Notes database ID")
-    reminders_db_id: str = Field(default="", description="Notion Reminders database ID")
     log_db_id: str = Field(default="", description="Notion Ingestion Log database ID")
 
 
@@ -59,10 +56,6 @@ def _load_yaml(path: Path) -> Dict[str, Any]:
 
 def load_feeds_config() -> Dict[str, Any]:
     return _load_yaml(FEEDS_CONFIG_PATH)
-
-
-def load_apple_config() -> Dict[str, Any]:
-    return _load_yaml(APPLE_CONFIG_PATH)
 
 
 def load_summarize_config() -> Dict[str, Any]:

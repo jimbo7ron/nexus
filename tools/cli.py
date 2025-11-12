@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import os
 import sys
 import warnings
 from pathlib import Path
@@ -16,8 +18,6 @@ from .config import load_notion_config, save_notion_config, get_notion_token
 from .notion import (
     build_youtube_properties,
     build_articles_properties,
-    build_notes_properties,
-    build_reminders_properties,
     build_log_properties,
     ensure_database,
     NotionWriter,
@@ -25,8 +25,6 @@ from .notion import (
 from .ingest_youtube import ingest_youtube_since
 from .ingest_news import ingest_news_since
 from .ingest_hackernews import ingest_hackernews
-from .ingest_apple_notes import ingest_apple_notes
-from .ingest_apple_reminders import ingest_apple_reminders
 from .ingest_youtube import ingest_youtube_url
 
 
@@ -41,6 +39,11 @@ def notion_bootstrap(
     )
 ):
     """Ensure Content and Ingestion Log databases exist in Notion and save their IDs in config."""
+    asyncio.run(_async_notion_bootstrap(parent_page_id))
+
+
+async def _async_notion_bootstrap(parent_page_id: str):
+    """Async implementation of notion bootstrap."""
     token = get_notion_token()
     if not token:
         print("[red]ERROR[/red]: NOTION_TOKEN environment variable is not set.")
@@ -60,7 +63,7 @@ def notion_bootstrap(
     client = Client(auth=token)
 
     # Ensure YouTube DB (video content)
-    youtube_id = ensure_database(
+    youtube_id = await ensure_database(
         client,
         cfg.parent_page_id,
         cfg.youtube_db_id,
@@ -68,31 +71,15 @@ def notion_bootstrap(
         properties=build_youtube_properties(),
     )
     # Ensure Articles DB (news articles and blog posts)
-    articles_id = ensure_database(
+    articles_id = await ensure_database(
         client,
         cfg.parent_page_id,
         cfg.articles_db_id,
         name="Articles",
         properties=build_articles_properties(),
     )
-    # Ensure Notes DB
-    notes_id = ensure_database(
-        client,
-        cfg.parent_page_id,
-        cfg.notes_db_id,
-        name="Notes",
-        properties=build_notes_properties(),
-    )
-    # Ensure Reminders DB
-    reminders_id = ensure_database(
-        client,
-        cfg.parent_page_id,
-        cfg.reminders_db_id,
-        name="Reminders",
-        properties=build_reminders_properties(),
-    )
     # Ensure Ingestion Log DB
-    log_id = ensure_database(
+    log_id = await ensure_database(
         client,
         cfg.parent_page_id,
         cfg.log_db_id,
@@ -102,39 +89,33 @@ def notion_bootstrap(
 
     cfg.youtube_db_id = youtube_id
     cfg.articles_db_id = articles_id
-    cfg.notes_db_id = notes_id
-    cfg.reminders_db_id = reminders_id
     cfg.log_db_id = log_id
     save_notion_config(cfg)
 
     print("[green]OK[/green] Notion databases ensured.")
     print(f"YouTube DB ID: [bold]{youtube_id}[/bold]")
     print(f"Articles DB ID: [bold]{articles_id}[/bold]")
-    print(f"Notes DB ID: [bold]{notes_id}[/bold]")
-    print(f"Reminders DB ID: [bold]{reminders_id}[/bold]")
     print(f"Ingestion Log DB ID: [bold]{log_id}[/bold]")
 
 
 def _make_writer(token: str) -> NotionWriter:
     cfg = load_notion_config()
-    if not cfg.youtube_db_id or not cfg.articles_db_id or not cfg.notes_db_id or not cfg.reminders_db_id or not cfg.log_db_id:
+    if not cfg.youtube_db_id or not cfg.articles_db_id or not cfg.log_db_id:
         print("[red]ERROR[/red]: Notion DB IDs missing. Run `nexus notion` first.")
         raise typer.Exit(code=3)
     client = Client(auth=token)
-    
+
     # Validate databases exist
     try:
         client.databases.retrieve(database_id=cfg.youtube_db_id)
         client.databases.retrieve(database_id=cfg.articles_db_id)
-        client.databases.retrieve(database_id=cfg.notes_db_id)
-        client.databases.retrieve(database_id=cfg.reminders_db_id)
         client.databases.retrieve(database_id=cfg.log_db_id)
     except Exception as e:
         print(f"[red]ERROR[/red]: Could not access Notion databases. Run `nexus notion` to recreate them.")
         print(f"Details: {str(e)}")
         raise typer.Exit(code=4)
-    
-    return NotionWriter(client, cfg.youtube_db_id, cfg.articles_db_id, cfg.notes_db_id, cfg.reminders_db_id, cfg.log_db_id)
+
+    return NotionWriter(client, cfg.youtube_db_id, cfg.articles_db_id, cfg.log_db_id)
 
 
 @app.command("ingest-youtube")
@@ -175,6 +156,7 @@ def cmd_ingest_hackernews(
     since: int = typer.Option(24, "--since", help="Hours to look back"),
     console: bool = typer.Option(False, "--console", help="Print one-line summary per story"),
     verbose: bool = typer.Option(False, "--verbose", help="Print detailed output (URLs, content preview, etc)"),
+    workers: int = typer.Option(10, "--workers", help="Number of concurrent workers for parallel processing"),
 ):
     """Ingest high-scoring Hacker News stories (default: 100+ points, last 24h)."""
     token = get_notion_token()
@@ -183,38 +165,53 @@ def cmd_ingest_hackernews(
         raise typer.Exit(code=1)
     writer = _make_writer(token)
     client = writer.client
-    count = ingest_hackernews(client, writer, min_score=min_score, since_hours=since, console=console, verbose=verbose)
-    print(f"[green]OK[/green] Ingested {count} HN stories")
 
+    async def run_ingestion():
+        try:
+            return await ingest_hackernews(client, writer, min_score=min_score, since_hours=since, console=console, verbose=verbose, workers=workers)
+        finally:
+            # Force cleanup of any remaining async generators
+            await asyncio.sleep(0)
 
-@app.command("ingest-apple-notes")
-def cmd_ingest_apple_notes(
-    console: bool = typer.Option(False, "--console", help="Print items to console as they are processed"),
-):
-    """Ingest Apple Notes from folder configured in config/apple.yaml."""
-    token = get_notion_token()
-    if not token:
-        print("[red]ERROR[/red]: NOTION_TOKEN environment variable is not set.")
-        raise typer.Exit(code=1)
-    writer = _make_writer(token)
-    client = writer.client
-    count = ingest_apple_notes(client, writer, console=console)
-    print(f"[green]OK[/green] Ingested {count} notes")
-
-
-@app.command("ingest-apple-reminders")
-def cmd_ingest_apple_reminders(
-    console: bool = typer.Option(False, "--console", help="Print items to console as they are processed"),
-):
-    """Ingest Apple Reminders from list configured in config/apple.yaml."""
-    token = get_notion_token()
-    if not token:
-        print("[red]ERROR[/red]: NOTION_TOKEN environment variable is not set.")
-        raise typer.Exit(code=1)
-    writer = _make_writer(token)
-    client = writer.client
-    count = ingest_apple_reminders(client, writer, console=console)
-    print(f"[green]OK[/green] Ingested {count} reminders")
+    # Run with proper cleanup
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        count = loop.run_until_complete(run_ingestion())
+        print(f"[green]OK[/green] Ingested {count} HN stories")
+    finally:
+        try:
+            # Cancel all remaining tasks
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            # Wait for task cancellations with timeout
+            if pending:
+                loop.run_until_complete(asyncio.wait_for(
+                    asyncio.gather(*pending, return_exceptions=True),
+                    timeout=2.0
+                ))
+        except asyncio.TimeoutError:
+            if console:
+                print("[yellow]Warning: Some tasks did not complete in time[/yellow]")
+        except Exception:
+            pass  # Ignore cleanup errors
+        finally:
+            try:
+                # Shutdown async generators
+                loop.run_until_complete(loop.shutdown_asyncgens())
+            except Exception:
+                pass
+            try:
+                # Shutdown default executor with timeout
+                loop.run_until_complete(asyncio.wait_for(
+                    loop.shutdown_default_executor(),
+                    timeout=2.0
+                ))
+            except (asyncio.TimeoutError, Exception):
+                pass
+            finally:
+                loop.close()
 
 
 @app.command("ingest-youtube-url")

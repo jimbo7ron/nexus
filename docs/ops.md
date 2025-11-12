@@ -5,28 +5,23 @@ Environment
 
 Initial setup
 1. Run bootstrap to create databases: `./nexus notion --parent-page-id <PAGE_ID>`
-   - This creates 5 databases: YouTube, Articles, Notes, Reminders, Ingestion Log
+   - This creates 3 databases: YouTube, Articles, Ingestion Log
    - Database IDs are saved to `config/notion.json`
 2. Configure feeds in `config/feeds.yaml`:
    - Set `youtube_use_api: true` for automatic subscription monitoring (recommended)
    - Or configure `youtube_channels` or `youtube_subscription_feed`
    - Add `rss_feeds` for news articles
-3. Optionally set `config/apple.yaml` (notes_folder, reminders_list)
 
 Manual runs
 - `./nexus ingest-youtube --since 24 [--console]` — ingest from all subscriptions (or configured feeds)
 - `./nexus ingest-youtube-url <URL> [--console]` — ingest a single video by URL
 - `./nexus ingest-news --since 24 [--console]` — ingest news articles from RSS feeds
-- `./nexus ingest-hackernews --min-score 100 --since 24 [--console]` — ingest high-scoring HN stories
-- `./nexus ingest-apple-notes [--console]` — ingest from configured Notes folder
-- `./nexus ingest-apple-reminders [--console]` — ingest from configured Reminders list
+- `./nexus ingest-hackernews --min-score 100 --since 24 [--console] [--workers 10]` — ingest high-scoring HN stories with parallel processing
 
 Note: Each content type has its own database and upsert method:
 - Videos → YouTube database (upsert_video, no Body field)
 - Articles → Articles database (upsert_article, includes Body field)
 - HN Stories → Articles database (upsert_article, with HN discussion link and score in summary)
-- Notes → Notes database (upsert_note, no summarization)
-- Reminders → Reminders database (upsert_reminder, no summarization)
 
 launchd example (daily at 7:30)
 Save to `~/Library/LaunchAgents/nexus.ingest.plist`:
