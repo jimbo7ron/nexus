@@ -1,12 +1,14 @@
 """Basic smoke test for HackerNews collector."""
 
+import pytest
 from plugins.hackernews.collector import fetch_top_stories
 
 
-def test_fetch_top_stories():
+@pytest.mark.asyncio
+async def test_fetch_top_stories():
     """Verify HN collector returns a list (may be empty)."""
     # Use a very high score threshold to avoid fetching too many stories
-    stories = fetch_top_stories(min_score=500, since_hours=24)
+    stories = await fetch_top_stories(min_score=500, since_hours=24)
     
     # Should return a list (may be empty if no stories meet criteria)
     assert isinstance(stories, list)
