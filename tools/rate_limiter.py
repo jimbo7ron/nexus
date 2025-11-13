@@ -16,12 +16,18 @@ class RateLimiter:
         """
         self.rate = rate
         self.period = period
-        self.semaphore = asyncio.Semaphore(rate)
+        self._semaphore = None  # Lazy initialization in event loop
         self.tokens: list[float] = []
+
+    def _get_semaphore(self):
+        """Get or create semaphore in current event loop."""
+        if self._semaphore is None:
+            self._semaphore = asyncio.Semaphore(self.rate)
+        return self._semaphore
 
     async def acquire(self):
         """Acquire permission to proceed, waiting if necessary to respect rate limit."""
-        async with self.semaphore:
+        async with self._get_semaphore():
             now = time.monotonic()
 
             # Remove tokens older than the period

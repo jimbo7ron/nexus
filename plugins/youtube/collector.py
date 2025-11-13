@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Iterable, List, Optional
@@ -29,6 +31,26 @@ def _parse_published(entry) -> datetime | None:
     return None
 
 
+_executor: ThreadPoolExecutor | None = None
+_EXECUTOR_WORKERS = 8
+
+
+def _get_executor() -> ThreadPoolExecutor:
+    global _executor
+    if _executor is None:
+        _executor = ThreadPoolExecutor(max_workers=_EXECUTOR_WORKERS, thread_name_prefix="yt-collector")
+    return _executor
+
+
+async def shutdown_collector_executor() -> None:
+    """Shutdown the shared executor used for blocking YouTube calls."""
+    global _executor
+    if _executor is not None:
+        executor = _executor
+        _executor = None
+        await asyncio.to_thread(executor.shutdown, wait=True, cancel_futures=True)
+
+
 def discover_channel(channel_id: str, since_hours: int = 24) -> List[VideoItem]:
     """Discover videos from a specific channel RSS feed."""
     url = YOUTUBE_CHANNEL_RSS.format(channel_id=channel_id)
@@ -38,6 +60,10 @@ def discover_channel(channel_id: str, since_hours: int = 24) -> List[VideoItem]:
 def discover_feed(feed_url: str, since_hours: int = 24) -> List[VideoItem]:
     """Discover videos from any YouTube RSS feed URL (channel, playlist, or subscriptions)."""
     return _discover_feed(feed_url, since_hours)
+
+
+class DiscoveryError(Exception):
+    """Raised when discovery fails for a channel/feed."""
 
 
 def _discover_feed(url: str, since_hours: int) -> List[VideoItem]:
@@ -104,8 +130,85 @@ def discover_subscriptions_via_api(
     
     # Sort by published date (newest first)
     all_videos.sort(key=lambda v: v.published or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
-    
+
     print(f"[YouTube API] Total videos discovered: {len(all_videos)}")
+    return all_videos
+
+
+# Async wrappers for parallel processing
+
+async def discover_channel_async(channel_id: str, since_hours: int = 24) -> List[VideoItem]:
+    """Async wrapper for discover_channel."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_get_executor(), discover_channel, channel_id, since_hours)
+
+
+async def discover_feed_async(feed_url: str, since_hours: int = 24) -> List[VideoItem]:
+    """Async wrapper for discover_feed."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_get_executor(), discover_feed, feed_url, since_hours)
+
+
+async def discover_subscriptions_via_api_async(
+    since_hours: int = 24,
+    max_channels: int = 50,
+    client_secret_path: Optional[str] = None,
+    token_path: Optional[str] = None,
+    max_concurrency: int = 10,
+) -> List[VideoItem]:
+    """Async version of discover_subscriptions_via_api with parallel channel fetching."""
+    from .api_client import YouTubeAPIClient
+
+    # Wrap API client operations in thread pool (OAuth happens here)
+    print(f"[YouTube API] Fetching subscriptions (max {max_channels})...")
+    try:
+        client = await asyncio.to_thread(
+            lambda: YouTubeAPIClient(client_secret_path=client_secret_path, token_path=token_path)
+        )
+    except Exception as exc:
+        raise DiscoveryError("Failed to initialize YouTube API client") from exc
+
+    # Get channel IDs
+    channel_ids = await asyncio.to_thread(
+        client.get_subscription_channel_ids,
+        max_results=max_channels
+    )
+    print(f"[YouTube API] Found {len(channel_ids)} subscriptions")
+
+    # Fetch videos from all channels in parallel
+    semaphore = asyncio.Semaphore(max(1, max_concurrency))
+
+    async def _fetch_channel(idx: int, channel_id: str) -> List[VideoItem]:
+        async with semaphore:
+            return await discover_channel_async(channel_id, since_hours)
+
+    tasks = [_fetch_channel(idx, channel_id) for idx, channel_id in enumerate(channel_ids)]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Flatten and filter
+    all_videos: List[VideoItem] = []
+    failures: List[tuple[str, Exception]] = []
+    for i, result in enumerate(results, 1):
+        if isinstance(result, list):
+            all_videos.extend(result)
+            print(f"  → Channel {i}/{len(channel_ids)}: Found {len(result)} recent video(s)")
+        elif isinstance(result, Exception):
+            channel_id = channel_ids[i - 1]
+            print(f"  → Channel {i}/{len(channel_ids)} ({channel_id}): Error: {result}")
+            failures.append((channel_id, result))
+
+    # Sort by published date (newest first)
+    all_videos.sort(
+        key=lambda v: v.published or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True
+    )
+
+    print(f"[YouTube API] Total videos discovered: {len(all_videos)}")
+
+    if failures:
+        channel_id, error = failures[0]
+        raise DiscoveryError(f"Failed to fetch channel {channel_id}") from error
+
     return all_videos
 
 

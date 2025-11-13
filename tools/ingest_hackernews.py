@@ -98,6 +98,14 @@ async def ingest_hackernews(
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
+        # Shutdown default thread pool executor used by asyncio.to_thread()
+        # Use the async shutdown method available in Python 3.9+
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.shutdown_default_executor()
+        except Exception:
+            pass  # Ignore errors during shutdown
+
 
 async def _process_story(story, writer: NotionWriter, summarizer: Summarizer, console: bool, verbose: bool) -> bool:
     """Process a single story. Returns True if successful, False otherwise."""

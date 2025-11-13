@@ -117,9 +117,11 @@ class NotionWriter:
             await self.rate_limiter.acquire()
             # Query the database for pages with matching URL using direct API request
             # Use sync call within lock - Notion client is fast and we're rate-limited anyway
+            # Normalize database_id: remove dashes for API path
+            normalized_db_id = database_id.replace("-", "")
             async with self._get_lock():
                 response = self.client.request(
-                    path=f"databases/{database_id}/query",
+                    path=f"databases/{normalized_db_id}/query",
                     method="POST",
                     body={
                         "filter": {"property": "Link", "url": {"equals": url}},

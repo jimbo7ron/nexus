@@ -1,23 +1,19 @@
-from __future__ import annotations
-
 from datetime import datetime, timezone
 
-import types
+import pytest
 
 
-def test_ingest_youtube_happy_path(monkeypatch, tmp_path):
-    # Redirect storage DB to temp
+@pytest.mark.asyncio
+async def test_ingest_youtube_happy_path(monkeypatch, tmp_path):
     import tools.storage as storage
+    import tools.ingest_youtube as iy
+    from plugins.youtube.collector import VideoItem
 
+    # Redirect storage DB to temp
     monkeypatch.setattr(storage, "DB_PATH", tmp_path / "queue.sqlite", raising=False)
 
     # Mock feeds config
-    import tools.ingest_youtube as iy
-
     monkeypatch.setattr(iy, "load_feeds_config", lambda: {"youtube_channels": ["UC_TEST"]})
-
-    # Build a fake video item
-    from plugins.youtube.collector import VideoItem
 
     fake_item = VideoItem(
         url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -27,37 +23,106 @@ def test_ingest_youtube_happy_path(monkeypatch, tmp_path):
         video_id="dQw4w9WgXcQ",
     )
 
-    monkeypatch.setattr(iy, "discover_channel", lambda channel_id, since_hours=24: [fake_item])
-    monkeypatch.setattr(iy, "fetch_transcript_text", lambda url: "hello transcript")
+    async def fake_discover_channel(channel_id: str, since_hours: int = 24):
+        assert channel_id == "UC_TEST"
+        return [fake_item]
 
-    # Fake Notion writer capturing calls
+    monkeypatch.setattr(iy, "discover_channel_async", fake_discover_channel)
+    async def fake_fetch_transcript_text_async(url: str):
+        assert url == fake_item.url
+        return "hello transcript"
+
+    monkeypatch.setattr(iy, "fetch_transcript_text_async", fake_fetch_transcript_text_async)
+
+    class FakeSummary:
+        tldr = "Short summary"
+        takeaways = ["Takeaway 1"]
+        key_quotes = ["Quote 1"]
+
+    class FakeSummarizer:
+        def __init__(self, *args, **kwargs):
+            self.closed = False
+
+        async def summarize_video(self, *args, **kwargs):
+            return FakeSummary()
+
+        async def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(iy, "Summarizer", FakeSummarizer)
+
     class FakeWriter:
         def __init__(self):
             self.client = None
             self.upserts = []
             self.logs = []
 
-        def upsert_video(self, **kwargs):
+        async def upsert_video(self, **kwargs):
             self.upserts.append(kwargs)
             return "page-id"
 
-        def log_event(self, item_url: str, action: str, result: str, message: str = ""):
+        async def log_event(self, item_url: str, action: str, result: str, message: str = ""):
             self.logs.append((item_url, action, result, message))
             return "log-id"
 
     writer = FakeWriter()
 
-    # First run should ingest 1
-    count1 = iy.ingest_youtube_since(client=None, writer=writer, since_hours=24)
+    count1 = await iy.ingest_youtube(client=None, writer=writer, since_hours=24)
     assert count1 == 1
     assert writer.upserts and writer.upserts[0]["url"] == fake_item.url
-    assert any(l[2] == "ok" for l in writer.logs)
+    assert any(result == "ok" for (_, _, result, _) in writer.logs)
 
-    # Second run should detect unchanged (dedupe) and skip
     writer2 = FakeWriter()
-    count2 = iy.ingest_youtube_since(client=None, writer=writer2, since_hours=24)
+    count2 = await iy.ingest_youtube(client=None, writer=writer2, since_hours=24)
     assert count2 == 0
-    # Expect a skip log due to unchanged content
-    assert any(l[2] == "skip" for l in writer2.logs)
+    assert any(result == "skip" for (_, _, result, _) in writer2.logs)
 
 
+@pytest.mark.asyncio
+async def test_ingest_youtube_transcript_block(monkeypatch, tmp_path):
+    import tools.storage as storage
+    import tools.ingest_youtube as iy
+    from plugins.youtube.collector import VideoItem
+
+    monkeypatch.setattr(storage, "DB_PATH", tmp_path / "queue.sqlite", raising=False)
+    monkeypatch.setattr(iy, "load_feeds_config", lambda: {"youtube_channels": ["UC_TEST"]})
+
+    fake_item = VideoItem(
+        url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        title="Blocked Video",
+        published=datetime(2025, 10, 30, 12, 0, tzinfo=timezone.utc),
+        channel="Test Channel",
+        video_id="dQw4w9WgXcQ",
+    )
+
+    async def fake_discover_channel(_channel_id: str, since_hours: int = 24):
+        return [fake_item]
+
+    async def blocked_transcript(_url: str):
+        raise RuntimeError("429 Too Many Requests")
+
+    class FakeSummarizer:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def summarize_video(self, *args, **kwargs):
+            return None
+
+        async def close(self):
+            pass
+
+    class FakeWriter:
+        client = None
+
+        async def upsert_video(self, **kwargs):
+            return "page-id"
+
+        async def log_event(self, item_url: str, action: str, result: str, message: str = ""):
+            return "log-id"
+
+    monkeypatch.setattr(iy, "discover_channel_async", fake_discover_channel)
+    monkeypatch.setattr(iy, "fetch_transcript_text_async", blocked_transcript)
+    monkeypatch.setattr(iy, "Summarizer", FakeSummarizer)
+
+    with pytest.raises(iy.FatalIngestionError):
+        await iy.ingest_youtube(client=None, writer=FakeWriter(), since_hours=24, console=False)
