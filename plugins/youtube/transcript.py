@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import warnings
 from typing import List, Optional
 
@@ -40,5 +41,10 @@ def fetch_transcript_text(url_or_id: str, languages: Optional[List[str]] = None)
         if text:
             parts.append(text)
     return "\n".join(parts)
+
+
+async def fetch_transcript_text_async(url_or_id: str, languages: Optional[List[str]] = None) -> str:
+    """Async wrapper for transcript fetching using thread pool."""
+    return await asyncio.to_thread(fetch_transcript_text, url_or_id, languages)
 
 

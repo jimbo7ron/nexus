@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import warnings
 from typing import Optional
 from datetime import datetime
@@ -65,4 +66,9 @@ def extract_metadata(url: str) -> dict:
             'thumbnail': '',
             'error': str(e),
         }
+
+
+async def extract_metadata_async(url: str) -> dict:
+    """Async wrapper for extract_metadata using thread pool."""
+    return await asyncio.to_thread(extract_metadata, url)
 

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import pytest
 from tools.storage import has_changed, mark_processed, get_stored_hash
 
 
-def test_has_changed_cycle(tmp_path, monkeypatch):
+@pytest.mark.asyncio
+async def test_has_changed_cycle(tmp_path, monkeypatch):
     # redirect DB to temp
     from tools import storage as st
 
@@ -11,9 +13,9 @@ def test_has_changed_cycle(tmp_path, monkeypatch):
 
     url = "https://example.com/item"
     new_hash = "abc123"
-    assert has_changed(url, new_hash) is True
-    mark_processed(url, new_hash)
-    assert get_stored_hash(url) == new_hash
-    assert has_changed(url, new_hash) is False
+    assert await has_changed(url, new_hash) is True
+    await mark_processed(url, new_hash)
+    assert await get_stored_hash(url) == new_hash
+    assert await has_changed(url, new_hash) is False
 
 

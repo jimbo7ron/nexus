@@ -2,18 +2,18 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
 
-def test_ingest_youtube_console(monkeypatch, tmp_path, capsys):
-    # Redirect storage DB to temp
+
+@pytest.mark.asyncio
+async def test_ingest_youtube_console(monkeypatch, tmp_path, capsys):
     import tools.storage as storage
-    monkeypatch.setattr(storage, "DB_PATH", tmp_path / "queue.sqlite", raising=False)
-
-    # Mock feeds config
     import tools.ingest_youtube as iy
+    from plugins.youtube.collector import VideoItem
+
+    monkeypatch.setattr(storage, "DB_PATH", tmp_path / "queue.sqlite", raising=False)
     monkeypatch.setattr(iy, "load_feeds_config", lambda: {"youtube_channels": ["UC_TEST"]})
 
-    # Fake video item
-    from plugins.youtube.collector import VideoItem
     fake_item = VideoItem(
         url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         title="Test Video",
@@ -22,27 +22,46 @@ def test_ingest_youtube_console(monkeypatch, tmp_path, capsys):
         video_id="dQw4w9WgXcQ",
     )
 
-    monkeypatch.setattr(iy, "discover_channel", lambda channel_id, since_hours=24: [fake_item])
-    monkeypatch.setattr(iy, "fetch_transcript_text", lambda url: "hello transcript " * 50)
+    async def fake_discover_channel(channel_id: str, since_hours: int = 24):
+        return [fake_item]
 
-    # Fake Notion writer (no-op)
+    async def fake_fetch_transcript(url: str):
+        return "hello transcript " * 50
+
+    class FakeSummary:
+        tldr = "Summary"
+        takeaways = ["Takeaway"]
+        key_quotes = []
+
+    class FakeSummarizer:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def summarize_video(self, *args, **kwargs):
+            return FakeSummary()
+
+        async def close(self):
+            pass
+
     class FakeWriter:
         def __init__(self):
             self.client = None
-        def upsert_video(self, **kwargs):
+
+        async def upsert_video(self, **kwargs):
             return "page-id"
-        def log_event(self, item_url: str, action: str, result: str, message: str = ""):
+
+        async def log_event(self, item_url: str, action: str, result: str, message: str = ""):
             return "log-id"
 
-    writer = FakeWriter()
+    monkeypatch.setattr(iy, "discover_channel_async", fake_discover_channel)
+    monkeypatch.setattr(iy, "fetch_transcript_text_async", fake_fetch_transcript)
+    monkeypatch.setattr(iy, "Summarizer", FakeSummarizer)
 
-    # Call with console=True to print preview
-    count = iy.ingest_youtube_since(client=None, writer=writer, since_hours=24, console=True)
+    count = await iy.ingest_youtube(writer=FakeWriter(), since_hours=24, console=True)
     assert count == 1
 
-    # Ensure something was printed (preview line)
     out = capsys.readouterr().out
     assert "[YouTube] Test Video" in out
-    assert "Transcript preview:" in out
+    assert "✅" in out
 
 

@@ -22,10 +22,9 @@ from .notion import (
     ensure_database,
     NotionWriter,
 )
-from .ingest_youtube import ingest_youtube_since
+from .ingest_youtube import ingest_youtube, ingest_youtube_url, FatalIngestionError
 from .ingest_news import ingest_news_since
 from .ingest_hackernews import ingest_hackernews
-from .ingest_youtube import ingest_youtube_url
 
 
 app = typer.Typer(help="Nexus CLI")
@@ -120,18 +119,31 @@ def _make_writer(token: str) -> NotionWriter:
 
 @app.command("ingest-youtube")
 def cmd_ingest_youtube(
-    since: int = typer.Option(24, help="Hours back to check"),
-    console: bool = typer.Option(False, "--console", help="Print items to console as they are processed"),
+    since: int = typer.Option(24, "--since", help="Hours to look back"),
+    console: bool = typer.Option(False, "--console", help="Print one-line summary per video"),
+    verbose: bool = typer.Option(False, "--verbose", help="Print detailed output"),
+    workers: int = typer.Option(10, "--workers", help="Number of concurrent workers for parallel processing"),
 ):
-    """Ingest YouTube videos from RSS feeds configured in config/feeds.yaml."""
+    """Ingest YouTube videos from configured sources with parallel processing."""
     token = get_notion_token()
     if not token:
         print("[red]ERROR[/red]: NOTION_TOKEN environment variable is not set.")
         raise typer.Exit(code=1)
     writer = _make_writer(token)
-    client = writer.client
-    count = ingest_youtube_since(client, writer, since_hours=since, console=console)
-    print(f"[green]OK[/green] Ingested {count} YouTube items")
+    try:
+        count = asyncio.run(
+            ingest_youtube(
+                writer,
+                since_hours=since,
+                console=console,
+                verbose=verbose,
+                workers=workers,
+            )
+        )
+        print(f"[green]OK[/green] Ingested {count} YouTube videos")
+    except FatalIngestionError as exc:
+        print(f"[red]ERROR[/red] {exc}")
+        raise typer.Exit(code=5)
 
 
 @app.command("ingest-news")
@@ -164,54 +176,18 @@ def cmd_ingest_hackernews(
         print("[red]ERROR[/red]: NOTION_TOKEN environment variable is not set.")
         raise typer.Exit(code=1)
     writer = _make_writer(token)
-    client = writer.client
 
-    async def run_ingestion():
-        try:
-            return await ingest_hackernews(client, writer, min_score=min_score, since_hours=since, console=console, verbose=verbose, workers=workers)
-        finally:
-            # Force cleanup of any remaining async generators
-            await asyncio.sleep(0)
-
-    # Run with proper cleanup
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        count = loop.run_until_complete(run_ingestion())
-        print(f"[green]OK[/green] Ingested {count} HN stories")
-    finally:
-        try:
-            # Cancel all remaining tasks
-            pending = asyncio.all_tasks(loop)
-            for task in pending:
-                task.cancel()
-            # Wait for task cancellations with timeout
-            if pending:
-                loop.run_until_complete(asyncio.wait_for(
-                    asyncio.gather(*pending, return_exceptions=True),
-                    timeout=2.0
-                ))
-        except asyncio.TimeoutError:
-            if console:
-                print("[yellow]Warning: Some tasks did not complete in time[/yellow]")
-        except Exception:
-            pass  # Ignore cleanup errors
-        finally:
-            try:
-                # Shutdown async generators
-                loop.run_until_complete(loop.shutdown_asyncgens())
-            except Exception:
-                pass
-            try:
-                # Shutdown default executor with timeout
-                loop.run_until_complete(asyncio.wait_for(
-                    loop.shutdown_default_executor(),
-                    timeout=2.0
-                ))
-            except (asyncio.TimeoutError, Exception):
-                pass
-            finally:
-                loop.close()
+    count = asyncio.run(
+        ingest_hackernews(
+            writer,
+            min_score=min_score,
+            since_hours=since,
+            console=console,
+            verbose=verbose,
+            workers=workers,
+        )
+    )
+    print(f"[green]OK[/green] Ingested {count} HN stories")
 
 
 @app.command("ingest-youtube-url")
@@ -229,7 +205,11 @@ def cmd_ingest_youtube_url(
             raise typer.Exit(code=1)
         writer = _make_writer(token)
 
-    count = ingest_youtube_url(writer=writer, url=url, console=console, dry_run=dry_run)
+    try:
+        count = ingest_youtube_url(writer=writer, url=url, console=console, dry_run=dry_run)
+    except FatalIngestionError as exc:
+        print(f"[red]ERROR[/red] {exc}")
+        raise typer.Exit(code=5)
     print(f"[green]OK[/green] Processed {count} video(s)")
 
 
