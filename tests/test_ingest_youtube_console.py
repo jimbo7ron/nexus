@@ -57,7 +57,7 @@ async def test_ingest_youtube_console(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(iy, "fetch_transcript_text_async", fake_fetch_transcript)
     monkeypatch.setattr(iy, "Summarizer", FakeSummarizer)
 
-    count = await iy.ingest_youtube(client=None, writer=FakeWriter(), since_hours=24, console=True)
+    count = await iy.ingest_youtube(writer=FakeWriter(), since_hours=24, console=True)
     assert count == 1
 
     out = capsys.readouterr().out

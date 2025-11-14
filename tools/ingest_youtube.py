@@ -26,7 +26,6 @@ class FatalIngestionError(Exception):
 
 
 async def ingest_youtube(
-    client: Client,
     writer: NotionWriter,
     since_hours: int = 24,
     console: bool = False,
@@ -37,7 +36,6 @@ async def ingest_youtube(
     Ingest YouTube videos with async parallel processing.
 
     Args:
-        client: Notion client
         writer: NotionWriter instance
         since_hours: How many hours to look back
         console: Whether to print console output (summary, one line per video)
@@ -126,8 +124,10 @@ async def ingest_youtube(
         try:
             loop = asyncio.get_running_loop()
             await loop.shutdown_default_executor()
-        except Exception:
-            pass  # Ignore errors during shutdown
+        except (RuntimeError, AttributeError) as e:
+            # Expected on Python < 3.9 or if loop is closed
+            if console:
+                print(f"[YouTube] Note: Could not shutdown executor: {e}")
 
 
 async def _collect_all_videos(since_hours: int, console: bool) -> list[VideoItem]:

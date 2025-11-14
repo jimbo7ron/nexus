@@ -67,13 +67,13 @@ async def test_ingest_youtube_happy_path(monkeypatch, tmp_path):
 
     writer = FakeWriter()
 
-    count1 = await iy.ingest_youtube(client=None, writer=writer, since_hours=24)
+    count1 = await iy.ingest_youtube(writer=writer, since_hours=24)
     assert count1 == 1
     assert writer.upserts and writer.upserts[0]["url"] == fake_item.url
     assert any(result == "ok" for (_, _, result, _) in writer.logs)
 
     writer2 = FakeWriter()
-    count2 = await iy.ingest_youtube(client=None, writer=writer2, since_hours=24)
+    count2 = await iy.ingest_youtube(writer=writer2, since_hours=24)
     assert count2 == 0
     assert any(result == "skip" for (_, _, result, _) in writer2.logs)
 
@@ -125,4 +125,4 @@ async def test_ingest_youtube_transcript_block(monkeypatch, tmp_path):
     monkeypatch.setattr(iy, "Summarizer", FakeSummarizer)
 
     with pytest.raises(iy.FatalIngestionError):
-        await iy.ingest_youtube(client=None, writer=FakeWriter(), since_hours=24, console=False)
+        await iy.ingest_youtube(writer=FakeWriter(), since_hours=24, console=False)

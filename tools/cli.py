@@ -25,7 +25,6 @@ from .notion import (
 from .ingest_youtube import ingest_youtube, ingest_youtube_url, FatalIngestionError
 from .ingest_news import ingest_news_since
 from .ingest_hackernews import ingest_hackernews
-from .ingest_youtube import ingest_youtube_url
 
 
 app = typer.Typer(help="Nexus CLI")
@@ -131,11 +130,9 @@ def cmd_ingest_youtube(
         print("[red]ERROR[/red]: NOTION_TOKEN environment variable is not set.")
         raise typer.Exit(code=1)
     writer = _make_writer(token)
-    client = writer.client
     try:
         count = asyncio.run(
             ingest_youtube(
-                client,
                 writer,
                 since_hours=since,
                 console=console,
@@ -179,11 +176,9 @@ def cmd_ingest_hackernews(
         print("[red]ERROR[/red]: NOTION_TOKEN environment variable is not set.")
         raise typer.Exit(code=1)
     writer = _make_writer(token)
-    client = writer.client
 
     count = asyncio.run(
         ingest_hackernews(
-            client,
             writer,
             min_score=min_score,
             since_hours=since,

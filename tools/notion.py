@@ -104,11 +104,18 @@ class NotionWriter:
         # Lock to serialize access to the Notion client (not thread-safe)
         # Note: Lock will be created lazily in the correct event loop
         self._lock = None
+        self._lock_init_lock = None  # Lock for thread-safe initialization
 
-    def _get_lock(self):
-        """Get or create lock in current event loop."""
+    async def _get_lock(self):
+        """Get or create lock in current event loop (thread-safe)."""
         if self._lock is None:
-            self._lock = asyncio.Lock()
+            # Lazy create the init lock as well
+            if self._lock_init_lock is None:
+                self._lock_init_lock = asyncio.Lock()
+            async with self._lock_init_lock:
+                # Double-check pattern: another coroutine may have created it
+                if self._lock is None:
+                    self._lock = asyncio.Lock()
         return self._lock
 
     async def _find_page_by_link(self, database_id: str, url: str) -> Optional[str]:
@@ -117,11 +124,9 @@ class NotionWriter:
             await self.rate_limiter.acquire()
             # Query the database for pages with matching URL using direct API request
             # Use sync call within lock - Notion client is fast and we're rate-limited anyway
-            # Normalize database_id: remove dashes for API path
-            normalized_db_id = database_id.replace("-", "")
-            async with self._get_lock():
+            async with await self._get_lock():
                 response = self.client.request(
-                    path=f"databases/{normalized_db_id}/query",
+                    path=f"databases/{database_id}/query",
                     method="POST",
                     body={
                         "filter": {"property": "Link", "url": {"equals": url}},
@@ -165,7 +170,7 @@ class NotionWriter:
         #     props["Thumbnail"] = {"files": [{"type": "external", "name": "Thumbnail", "external": {"url": thumbnail}}]}
 
         await self.rate_limiter.acquire()
-        async with self._get_lock():
+        async with await self._get_lock():
             if page_id:
                 self.client.pages.update(page_id=page_id, properties=props)
                 await asyncio.sleep(0)
@@ -201,7 +206,7 @@ class NotionWriter:
         }
 
         await self.rate_limiter.acquire()
-        async with self._get_lock():
+        async with await self._get_lock():
             if page_id:
                 self.client.pages.update(page_id=page_id, properties=props)
                 await asyncio.sleep(0)
@@ -229,7 +234,7 @@ class NotionWriter:
             "Message": {"rich_text": [{"type": "text", "text": {"content": safe_truncate(message, 2000)}}] if message else []},
         }
         await self.rate_limiter.acquire()
-        async with self._get_lock():
+        async with await self._get_lock():
             created = self.client.pages.create(
                 parent={"database_id": self.log_db_id},
                 properties=props

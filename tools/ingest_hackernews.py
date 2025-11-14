@@ -10,14 +10,13 @@ from notion_client import Client
 from .config import load_feeds_config, load_summarize_config
 from .notion import NotionWriter
 from .utils import content_hash
-from plugins.hackernews.collector import fetch_top_stories
+from plugins.hackernews.collector import fetch_top_stories, HNStory
 from plugins.news.extractor import fetch_article_text
 from .summarizer import Summarizer
 from .storage import has_changed, mark_processed, close_db
 
 
 async def ingest_hackernews(
-    client: Client,
     writer: NotionWriter,
     min_score: int = 100,
     since_hours: int = 24,
@@ -29,7 +28,6 @@ async def ingest_hackernews(
     Ingest HackerNews stories with high scores.
 
     Args:
-        client: Notion client
         writer: NotionWriter instance
         min_score: Minimum HN score threshold
         since_hours: How many hours to look back
@@ -57,7 +55,7 @@ async def ingest_hackernews(
         # Process stories in parallel with worker limit
         semaphore = asyncio.Semaphore(workers)
 
-        async def process_story_with_limit(story):
+        async def process_story_with_limit(story: HNStory) -> bool:
             async with semaphore:
                 return await _process_story(story, writer, summarizer, console, verbose)
 
@@ -103,11 +101,13 @@ async def ingest_hackernews(
         try:
             loop = asyncio.get_running_loop()
             await loop.shutdown_default_executor()
-        except Exception:
-            pass  # Ignore errors during shutdown
+        except (RuntimeError, AttributeError) as e:
+            # Expected on Python < 3.9 or if loop is closed
+            if console:
+                print(f"[HN] Note: Could not shutdown executor: {e}")
 
 
-async def _process_story(story, writer: NotionWriter, summarizer: Summarizer, console: bool, verbose: bool) -> bool:
+async def _process_story(story: HNStory, writer: NotionWriter, summarizer: Summarizer, console: bool, verbose: bool) -> bool:
     """Process a single story. Returns True if successful, False otherwise."""
     try:
         # Console: one-line summary
