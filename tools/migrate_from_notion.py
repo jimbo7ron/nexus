@@ -45,7 +45,7 @@ async def retry_on_database_locked(func, *args, **kwargs):
             return await func(*args, **kwargs)
         except Exception as e:
             error_msg = str(e).lower()
-            if "database is locked" in error_msg or "sqlite" in error_msg:
+            if "database is locked" in error_msg or "locked" in error_msg:
                 last_error = e
                 if attempt < MAX_RETRIES - 1:
                     wait_time = RETRY_DELAY * (2 ** attempt)  # Exponential backoff
@@ -92,6 +92,7 @@ async def export_notion_videos(client: Client, database_id: str) -> List[Dict[st
             published = _get_date_property(props.get("Published", {}))
             updated = _get_date_property(props.get("Last Updated", {}))
 
+            # Note: Records without url or title are silently skipped
             if url and title:  # Only include if we have required fields
                 videos.append({
                     "url": url,
@@ -141,6 +142,7 @@ async def export_notion_articles(client: Client, database_id: str) -> List[Dict[
             published = _get_date_property(props.get("Published", {}))
             updated = _get_date_property(props.get("Last Updated", {}))
 
+            # Note: Records without url or title are silently skipped
             if url and title:
                 articles.append({
                     "url": url,
@@ -187,6 +189,7 @@ async def export_notion_logs(client: Client, database_id: str) -> List[Dict[str,
             result = _get_select_property(props.get("Result", {}))
             message = _get_text_property(props.get("Message", {}))
 
+            # Note: Records without all required fields (time, url, action, result) are silently skipped
             if time and url and action and result:
                 logs.append({
                     "time": time,
