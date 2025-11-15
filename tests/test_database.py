@@ -205,6 +205,27 @@ async def test_upsert_video_update_existing(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_upsert_video_without_commit(tmp_path):
+    """Test upsert_video can defer commit when requested."""
+    db_path = tmp_path / "test.db"
+
+    async with DatabaseWriter(db_path) as writer:
+        await writer.upsert_video(
+            title="Deferred Commit Video",
+            url="https://example.com/deferred",
+            commit=False,
+        )
+
+        # Rollback should remove the uncommitted insert
+        await writer._conn.rollback()
+        cursor = await writer._conn.execute(
+            "SELECT COUNT(*) FROM videos WHERE url = ?",
+            ("https://example.com/deferred",)
+        )
+        assert (await cursor.fetchone())[0] == 0
+
+
+@pytest.mark.asyncio
 async def test_upsert_video_returns_string_id(tmp_path):
     """Test that upsert_video returns ID as string (NotionWriter compatibility)."""
     db_path = tmp_path / "test.db"
@@ -391,6 +412,26 @@ async def test_upsert_article_update_existing(tmp_path):
         )
         count = (await cursor.fetchone())[0]
         assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_upsert_article_without_commit(tmp_path):
+    """Test upsert_article can defer commit when requested."""
+    db_path = tmp_path / "test.db"
+
+    async with DatabaseWriter(db_path) as writer:
+        await writer.upsert_article(
+            title="Deferred Commit Article",
+            url="https://example.com/article-deferred",
+            commit=False,
+        )
+
+        await writer._conn.rollback()
+        cursor = await writer._conn.execute(
+            "SELECT COUNT(*) FROM articles WHERE url = ?",
+            ("https://example.com/article-deferred",)
+        )
+        assert (await cursor.fetchone())[0] == 0
 
 
 @pytest.mark.asyncio
@@ -694,12 +735,6 @@ async def test_search_videos_fts5(tmp_path):
             summary="Master advanced Python patterns and best practices",
         )
 
-        # Update FTS index
-        await writer._conn.execute(
-            "INSERT INTO videos_fts(videos_fts) VALUES('rebuild')"
-        )
-        await writer._conn.commit()
-
         # Search for Python videos
         results = await writer.search_videos("Python")
 
@@ -740,12 +775,6 @@ async def test_search_articles_fts5(tmp_path):
             summary="Optimize your database queries",
             body="Learn indexing strategies and query optimization techniques...",
         )
-
-        # Update FTS index
-        await writer._conn.execute(
-            "INSERT INTO articles_fts(articles_fts) VALUES('rebuild')"
-        )
-        await writer._conn.commit()
 
         # Search for database articles (case-insensitive search)
         results = await writer.search_articles("databases")

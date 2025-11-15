@@ -104,6 +104,29 @@ class DatabaseWriter:
             )
         """)
 
+        # Videos FTS triggers keep the external content index synchronized
+        videos_triggers_missing = await self._missing_triggers(
+            ["videos_ai", "videos_au", "videos_ad"]
+        )
+        await self._conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS videos_ai AFTER INSERT ON videos BEGIN
+                INSERT INTO videos_fts(rowid, title, summary)
+                VALUES (new.id, new.title, COALESCE(new.summary, ''));
+            END;
+        """)
+        await self._conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS videos_au AFTER UPDATE ON videos BEGIN
+                INSERT INTO videos_fts(videos_fts, rowid) VALUES('delete', old.id);
+                INSERT INTO videos_fts(rowid, title, summary)
+                VALUES (new.id, new.title, COALESCE(new.summary, ''));
+            END;
+        """)
+        await self._conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS videos_ad AFTER DELETE ON videos BEGIN
+                INSERT INTO videos_fts(videos_fts, rowid) VALUES('delete', old.id);
+            END;
+        """)
+
         # Articles table
         await self._conn.execute("""
             CREATE TABLE IF NOT EXISTS articles (
@@ -144,6 +167,28 @@ class DatabaseWriter:
             )
         """)
 
+        articles_triggers_missing = await self._missing_triggers(
+            ["articles_ai", "articles_au", "articles_ad"]
+        )
+        await self._conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS articles_ai AFTER INSERT ON articles BEGIN
+                INSERT INTO articles_fts(rowid, title, summary, body)
+                VALUES (new.id, new.title, COALESCE(new.summary, ''), COALESCE(new.body, ''));
+            END;
+        """)
+        await self._conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS articles_au AFTER UPDATE ON articles BEGIN
+                INSERT INTO articles_fts(articles_fts, rowid) VALUES('delete', old.id);
+                INSERT INTO articles_fts(rowid, title, summary, body)
+                VALUES (new.id, new.title, COALESCE(new.summary, ''), COALESCE(new.body, ''));
+            END;
+        """)
+        await self._conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS articles_ad AFTER DELETE ON articles BEGIN
+                INSERT INTO articles_fts(articles_fts, rowid) VALUES('delete', old.id);
+            END;
+        """)
+
         # Ingestion logs table
         await self._conn.execute("""
             CREATE TABLE IF NOT EXISTS ingestion_logs (
@@ -169,7 +214,23 @@ class DatabaseWriter:
             "CREATE INDEX IF NOT EXISTS idx_logs_action_result ON ingestion_logs(action, result)"
         )
 
+        # Rebuild FTS indexes once if triggers were newly created (upgrade scenario)
+        if videos_triggers_missing:
+            await self._conn.execute("INSERT INTO videos_fts(videos_fts) VALUES('rebuild')")
+        if articles_triggers_missing:
+            await self._conn.execute("INSERT INTO articles_fts(articles_fts) VALUES('rebuild')")
+
         await self._conn.commit()
+
+    async def _missing_triggers(self, names: List[str]) -> bool:
+        """Return True if any of the provided triggers are missing."""
+        placeholders = ",".join("?" for _ in names)
+        cursor = await self._conn.execute(
+            f"SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN ({placeholders})",
+            names,
+        )
+        count = (await cursor.fetchone())[0]
+        return count < len(names)
 
     async def upsert_video(
         self,
@@ -180,6 +241,7 @@ class DatabaseWriter:
         source: str = "",
         published_iso: Optional[str] = None,
         last_updated_iso: Optional[str] = None,
+        commit: bool = True,
     ) -> str:
         """Insert or update a video in the database.
 
@@ -191,6 +253,7 @@ class DatabaseWriter:
             source: Channel name
             published_iso: ISO 8601 publish date
             last_updated_iso: ISO 8601 last update date
+            commit: Whether to commit the transaction (default: True)
 
         Returns:
             Row ID as string (for NotionWriter compatibility)
@@ -212,7 +275,8 @@ class DatabaseWriter:
         """, (url, title, thumbnail, summary, source, published_iso, last_updated_iso, now))
 
         row = await cursor.fetchone()
-        await self._conn.commit()
+        if commit:
+            await self._conn.commit()
         return str(row[0])
 
     async def upsert_article(
@@ -224,6 +288,7 @@ class DatabaseWriter:
         source: str = "",
         published_iso: Optional[str] = None,
         last_updated_iso: Optional[str] = None,
+        commit: bool = True,
     ) -> str:
         """Insert or update an article in the database.
 
@@ -235,6 +300,7 @@ class DatabaseWriter:
             source: Site name or "Hacker News (XXX points)"
             published_iso: ISO 8601 publish date
             last_updated_iso: ISO 8601 last update date
+            commit: Whether to commit the transaction (default: True)
 
         Returns:
             Row ID as string (for NotionWriter compatibility)
@@ -256,7 +322,8 @@ class DatabaseWriter:
         """, (url, title, summary, body, source, published_iso, last_updated_iso, now))
 
         row = await cursor.fetchone()
-        await self._conn.commit()
+        if commit:
+            await self._conn.commit()
         return str(row[0])
 
     async def log_event(

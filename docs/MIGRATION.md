@@ -155,7 +155,7 @@ sqlite3 db/nexus.sqlite "SELECT COUNT(*) FROM videos;"
 ### 3. Query Recent Videos
 
 ```bash
-sqlite3 db/nexus.sqlite "SELECT title, published_iso FROM videos ORDER BY published_iso DESC LIMIT 5;"
+sqlite3 db/nexus.sqlite "SELECT title, published_at FROM videos ORDER BY published_at DESC LIMIT 5;"
 ```
 
 ### 4. Query Article Count
@@ -374,7 +374,7 @@ chmod 644 db/nexus.sqlite  # if file exists
 sqlite3 db/nexus.sqlite
 
 # Interactive SQL
-SELECT title, published_iso FROM videos LIMIT 10;
+SELECT title, published_at FROM videos LIMIT 10;
 ```
 
 **Database Browser**:
@@ -386,7 +386,7 @@ SELECT title, published_iso FROM videos LIMIT 10;
 import sqlite3
 conn = sqlite3.connect('db/nexus.sqlite')
 cursor = conn.cursor()
-cursor.execute('SELECT * FROM videos ORDER BY published_iso DESC LIMIT 10')
+cursor.execute('SELECT * FROM videos ORDER BY published_at DESC LIMIT 10')
 for row in cursor.fetchall():
     print(row)
 ```

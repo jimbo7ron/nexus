@@ -224,7 +224,7 @@ This will:
 
 ## Ingestion Commands
 
-All ingestion commands work with both SQLite and Notion backends (configured in `config/writer.json`).
+YouTube and Hacker News ingestion work with both SQLite and Notion backends (configured in `config/writer.json`). News ingestion currently requires the Notion backend (the CLI warns if SQLite is selected).
 
 ### YouTube Videos
 Discover via RSS or API, fetch transcript, summarize, and store:
@@ -335,4 +335,3 @@ python3.10 -m venv .venv
 - **Migration Guide**: `docs/MIGRATION.md` - Migrating from Notion to SQLite
 - **Plan**: `docs/PLAN.md` - Project architecture and development plan
 - **Operations**: `docs/ops.md` - Scheduling and automation
-

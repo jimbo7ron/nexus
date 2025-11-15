@@ -328,11 +328,17 @@ async def main():
 
             for i in range(0, len(videos), batch_size):
                 batch = videos[i:i + batch_size]
-                # Wrap batch in transaction for atomicity
+
                 async def import_video_batch():
-                    for video in batch:
-                        await db_writer.upsert_video(**video)
-                        progress.advance(task)
+                    await db_writer._conn.execute("BEGIN")
+                    try:
+                        for video in batch:
+                            await db_writer.upsert_video(**video, commit=False)
+                            progress.advance(task)
+                        await db_writer._conn.commit()
+                    except Exception:
+                        await db_writer._conn.rollback()
+                        raise
 
                 await retry_on_database_locked(import_video_batch)
 
@@ -344,9 +350,15 @@ async def main():
             for i in range(0, len(articles), batch_size):
                 batch = articles[i:i + batch_size]
                 async def import_article_batch():
-                    for article in batch:
-                        await db_writer.upsert_article(**article)
-                        progress.advance(task)
+                    await db_writer._conn.execute("BEGIN")
+                    try:
+                        for article in batch:
+                            await db_writer.upsert_article(**article, commit=False)
+                            progress.advance(task)
+                        await db_writer._conn.commit()
+                    except Exception:
+                        await db_writer._conn.rollback()
+                        raise
 
                 await retry_on_database_locked(import_article_batch)
 
@@ -358,14 +370,19 @@ async def main():
             for i in range(0, len(logs), batch_size):
                 batch = logs[i:i + batch_size]
                 async def import_log_batch():
-                    for log in batch:
-                        # Insert logs directly (no upsert needed)
-                        await db_writer._conn.execute("""
-                            INSERT OR IGNORE INTO ingestion_logs (time, item_url, action, result, message)
-                            VALUES (?, ?, ?, ?, ?)
-                        """, (log["time"], log["item_url"], log["action"], log["result"], log["message"]))
-                        progress.advance(task)
-                    await db_writer._conn.commit()
+                    await db_writer._conn.execute("BEGIN")
+                    try:
+                        for log in batch:
+                            # Insert logs directly (no upsert needed)
+                            await db_writer._conn.execute("""
+                                INSERT OR IGNORE INTO ingestion_logs (time, item_url, action, result, message)
+                                VALUES (?, ?, ?, ?, ?)
+                            """, (log["time"], log["item_url"], log["action"], log["result"], log["message"]))
+                            progress.advance(task)
+                        await db_writer._conn.commit()
+                    except Exception:
+                        await db_writer._conn.rollback()
+                        raise
 
                 await retry_on_database_locked(import_log_batch)
 
