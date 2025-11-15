@@ -261,9 +261,11 @@ Top stories → extract article → summarize → store:
 Run daily via launchd. Example plist and details are in `docs/ops.md`.
 
 ## Tests
+The included `./python` helper wraps the virtualenv python and automatically includes
+the repository root on `PYTHONPATH`, so you no longer need to `PYTHONPATH=.` manually.
 ```bash
 source .venv/bin/activate
-python -m pytest -q
+./python -m pytest -q
 ```
 
 ## Troubleshooting
