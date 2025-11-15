@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PY="$ROOT_DIR/.venv/bin/python"
+
+# Ensure the repo root is on PYTHONPATH so modules like `tools` are importable.
+export PYTHONPATH="$ROOT_DIR${PYTHONPATH+:$PYTHONPATH}"
+
+if [[ -x "$PY" ]]; then
+  exec "$PY" -W ignore::DeprecationWarning -W ignore::FutureWarning "$@"
+else
+  exec python3 -W ignore::DeprecationWarning -W ignore::FutureWarning "$@"
+fi
