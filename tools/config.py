@@ -11,6 +11,7 @@ import yaml
 
 CONFIG_DIR = Path(__file__).parent.parent / "config"
 NOTION_CONFIG_PATH = CONFIG_DIR / "notion.json"
+WRITER_CONFIG_PATH = CONFIG_DIR / "writer.json"
 FEEDS_CONFIG_PATH = CONFIG_DIR / "feeds.yaml"
 SUMMARIZE_CONFIG_PATH = CONFIG_DIR / "summarize.yaml"
 
@@ -23,6 +24,18 @@ class NotionConfig(BaseModel):
     youtube_db_id: str = Field(default="", description="Notion YouTube database ID (video content)")
     articles_db_id: str = Field(default="", description="Notion Articles database ID (news articles and blog posts)")
     log_db_id: str = Field(default="", description="Notion Ingestion Log database ID")
+
+
+class WriterConfig(BaseModel):
+    """Configuration for the writer backend (sqlite or notion)."""
+    backend: str = Field(
+        default="sqlite",
+        description="Backend to use for content storage: 'sqlite' or 'notion'",
+    )
+    db_path: Optional[Path] = Field(
+        default=None,
+        description="Path to SQLite database file (only used when backend='sqlite')",
+    )
 
 
 def ensure_config_dir() -> None:
@@ -71,5 +84,38 @@ def load_summarize_config() -> Dict[str, Any]:
             "api_key_env": "OPENAI_API_KEY",
         }
     return cfg
+
+
+def load_writer_config() -> WriterConfig:
+    """Load writer configuration from config/writer.json.
+
+    Returns:
+        WriterConfig with backend and db_path settings
+    """
+    ensure_config_dir()
+    if WRITER_CONFIG_PATH.exists():
+        data = json.loads(WRITER_CONFIG_PATH.read_text(encoding="utf-8"))
+        # Handle db_path as string and convert to Path
+        if "db_path" in data and data["db_path"]:
+            data["db_path"] = Path(data["db_path"])
+        return WriterConfig(**data)
+    # Create default config if missing
+    cfg = WriterConfig()
+    save_writer_config(cfg)
+    return cfg
+
+
+def save_writer_config(cfg: WriterConfig) -> None:
+    """Save writer configuration to config/writer.json.
+
+    Args:
+        cfg: WriterConfig to save
+    """
+    ensure_config_dir()
+    # Convert Path to string for JSON serialization
+    data = cfg.model_dump()
+    if data.get("db_path"):
+        data["db_path"] = str(data["db_path"])
+    WRITER_CONFIG_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 

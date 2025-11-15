@@ -1,0 +1,1 @@
+- always use the planning agent to plan
